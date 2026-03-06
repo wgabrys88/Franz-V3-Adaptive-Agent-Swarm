@@ -1,0 +1,13 @@
+- Python 3.13 only. Modern syntax, strict typing, pattern matching. No legacy code.
+- Windows 11 only. No compatibility layers or fallbacks.
+- Latest Google Chrome browser support only.
+- OpenAI API Stateless /chat/completions is used by design.
+- Maximum code reduction. Remove every possible line while keeping 100% original functionality.
+- Perfect Pylance / pyright compatibility, full type hints.
+- No comments anywhere in any file. Code blocks must contain no non-ASCII characters.
+- No slicing or truncating of data anywhere in the code.
+- No functional "magic values" in the code.
+- Files .html must use latest HTML5 + modern CSS + modern JS (ES2024).
+- Use native Qwen3 / Qwen3.5 VL input and output format when prompting.
+- Use knowledge about the VLM model training data for prompt correction. Ensure small 2B / 0.8B version of VL model will be properly prompted.
+- Ensure the code does not contain any duplications and dead functionalities. Remove any functional fallbacks.
