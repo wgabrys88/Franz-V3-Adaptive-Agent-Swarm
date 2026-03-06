@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LM Studio Mock for Franz V3</title>
+<style>
+:root {
+  --bg: #0a0c10;
+  --bg2: #0f1218;
+  --bg3: #151a22;
+  --bg4: #1c2330;
+  --border: #1e2d40;
+  --accent: #00d4ff;
+  --accent2: #7c3aed;
+  --accent3: #10b981;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --text3: #475569;
+  --glow: 0 0 12px rgba(0,212,255,.35);
+  --glow2: 0 0 12px rgba(124,58,237,.35);
+  --radius: 6px;
+  --font: 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Cascadia Code', 'Consolas', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; overflow: hidden; }
+
+/* LAYOUT */
+#app { display: grid; grid-template-rows: 52px 1fr; height: 100vh; }
+#header { display: flex; align-items: center; gap: 16px; padding: 0 20px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+#header h1 { font-size: 15px; font-weight: 700; letter-spacing: .04em; color: var(--accent); text-shadow: var(--glow); white-space: nowrap; }
+#header .sub { font-size: 11px; color: var(--text3); }
+#status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--err); box-shadow: 0 0 8px var(--err); flex-shrink: 0; transition: background .3s, box-shadow .3s; }
+#status-dot.ok { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+#status-label { font-size: 11px; color: var(--text2); }
+.spacer { flex: 1; }
+#start-hint { font-size: 11px; color: var(--text3); background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 10px; }
+#start-hint code { color: var(--accent); font-family: var(--mono); }
+
+#main { display: grid; grid-template-columns: 1fr 340px; grid-template-rows: 1fr 220px; gap: 0; overflow: hidden; }
+#left-col { display: grid; grid-template-rows: 1fr 220px; overflow: hidden; }
+#requests-pane { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+#detail-pane { display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); }
+#right-col { display: flex; flex-direction: column; overflow: hidden; }
+#log-pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; border-bottom: 1px solid var(--border); }
+#templates-pane { height: 220px; display: flex; flex-direction: column; overflow: hidden; }
+
+/* PANE HEADERS */
+.pane-header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.pane-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
+.pane-badge { font-size: 10px; background: var(--bg4); border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; color: var(--text3); }
+.pane-spacer { flex: 1; }
+.pane-btn { font-size: 11px; padding: 3px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg3); color: var(--text2); cursor: pointer; transition: border-color .2s, color .2s; }
+.pane-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pane-btn.primary { border-color: var(--accent2); color: var(--accent2); }
+.pane-btn.primary:hover { background: rgba(124,58,237,.15); }
+
+/* REQUESTS TABLE */
+#req-table-wrap { flex: 1; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th { position: sticky; top: 0; background: var(--bg3); padding: 6px 10px; text-align: left; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text3); border-bottom: 1px solid var(--border); }
+tbody tr { cursor: pointer; border-bottom: 1px solid rgba(30,45,64,.5); transition: background .15s; }
+tbody tr:hover { background: var(--bg3); }
+tbody tr.selected { background: rgba(0,212,255,.07); border-left: 2px solid var(--accent); }
+tbody td { padding: 6px 10px; color: var(--text2); font-size: 12px; }
+td.agent { color: var(--accent); font-family: var(--mono); font-size: 11px; font-weight: 600; }
+td.ts { color: var(--text3); font-family: var(--mono); font-size: 10px; }
+td.img-yes { color: var(--accent3); }
+td.img-no { color: var(--text3); }
+
+/* DETAIL PANE */
+#detail-inner { flex: 1; display: grid; grid-template-columns: 1fr 200px; overflow: hidden; }
+#detail-json { flex: 1; overflow-y: auto; padding: 10px 12px; font-family: var(--mono); font-size: 11px; color: var(--text2); white-space: pre-wrap; word-break: break-all; }
+#detail-canvas-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg3); border-left: 1px solid var(--border); padding: 8px; gap: 6px; }
+#detail-canvas { border: 1px solid var(--border); border-radius: 4px; max-width: 184px; max-height: 184px; }
+#detail-canvas-label { font-size: 10px; color: var(--text3); text-align: center; }
+
+/* LOG PANE */
+#log-inner { flex: 1; overflow-y: auto; padding: 6px 0; }
+.log-row { display: flex; gap: 8px; padding: 2px 12px; font-family: var(--mono); font-size: 11px; line-height: 1.5; }
+.log-row:hover { background: var(--bg3); }
+.log-ts { color: var(--text3); flex-shrink: 0; }
+.log-text { color: var(--text2); word-break: break-all; }
+.log-text.ok { color: var(--accent3); }
+.log-text.err { color: var(--err); }
+.log-text.warn { color: var(--warn); }
+.log-text.req { color: var(--accent); }
+.log-text.resp { color: var(--accent2); }
+
+/* TEMPLATES PANE */
+#tmpl-editor { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 8px 10px; gap: 6px; }
+#tmpl-textarea { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--mono); font-size: 11px; padding: 8px; resize: none; outline: none; transition: border-color .2s; }
+#tmpl-textarea:focus { border-color: var(--accent2); }
+#tmpl-actions { display: flex; gap: 8px; align-items: center; }
+#tmpl-status { font-size: 11px; color: var(--text3); flex: 1; }
+
+/* OVERRIDE PANEL (inside detail header) */
+#override-row { display: flex; gap: 6px; align-items: center; padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+#override-input { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--mono); font-size: 11px; padding: 4px 8px; outline: none; }
+#override-input:focus { border-color: var(--accent2); }
+#override-select { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text2); font-size: 11px; padding: 4px 6px; outline: none; cursor: pointer; }
+
+/* SCROLLBARS */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+/* PULSE ANIMATION */
+@keyframes pulse-in { 0%{opacity:0;transform:translateX(-6px)} 100%{opacity:1;transform:none} }
+.new-row { animation: pulse-in .25s ease; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="header">
+    <div id="status-dot"></div>
+    <span id="status-label">Disconnected</span>
+    <h1>LM Studio Mock &mdash; Franz V3</h1>
+    <span class="sub">port 1235</span>
+    <div class="spacer"></div>
+    <span id="start-hint">Run: <code>python LM_Studio_Mocked_Server.py</code></span>
+  </header>
+  <div id="main">
+    <div id="left-col">
+      <div id="requests-pane">
+        <div class="pane-header">
+          <span class="pane-title">Incoming Requests</span>
+          <span class="pane-badge" id="req-count">0</span>
+          <div class="pane-spacer"></div>
+          <button class="pane-btn" id="btn-clear">Clear</button>
+        </div>
+        <div id="req-table-wrap">
+          <table>
+            <thead><tr>
+              <th>Timestamp</th>
+              <th>Agent</th>
+              <th>Temp</th>
+              <th>Tokens</th>
+              <th>Image</th>
+              <th>Response</th>
+            </tr></thead>
+            <tbody id="req-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="detail-pane">
+        <div class="pane-header">
+          <span class="pane-title">Request Detail</span>
+          <div class="pane-spacer"></div>
+        </div>
+        <div id="override-row">
+          <span style="font-size:11px;color:var(--text3);white-space:nowrap">Force Response:</span>
+          <select id="override-select"><option value="">-- pick template --</option></select>
+          <input id="override-input" placeholder="or type custom response..." />
+          <button class="pane-btn primary" id="btn-force">Force Now</button>
+        </div>
+        <div id="detail-inner">
+          <div id="detail-json">Select a request to inspect...</div>
+          <div id="detail-canvas-wrap">
+            <canvas id="detail-canvas" width="184" height="184"></canvas>
+            <span id="detail-canvas-label">No image</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="right-col">
+      <div id="log-pane">
+        <div class="pane-header">
+          <span class="pane-title">Live Log</span>
+          <div class="pane-spacer"></div>
+          <button class="pane-btn" id="btn-clear-log">Clear</button>
+        </div>
+        <div id="log-inner"></div>
+      </div>
+      <div id="templates-pane">
+        <div class="pane-header">
+          <span class="pane-title">mock_templates.json</span>
+          <div class="pane-spacer"></div>
+          <button class="pane-btn" id="btn-tmpl-reload">Reload</button>
+          <button class="pane-btn primary" id="btn-tmpl-save">Save</button>
+        </div>
+        <div id="tmpl-editor">
+          <textarea id="tmpl-textarea" spellcheck="false"></textarea>
+          <div id="tmpl-actions">
+            <span id="tmpl-status"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = "http://localhost:1235";
+const dot = document.getElementById("status-dot");
+const statusLabel = document.getElementById("status-label");
+const reqTbody = document.getElementById("req-tbody");
+const reqCount = document.getElementById("req-count");
+const detailJson = document.getElementById("detail-json");
+const detailCanvas = document.getElementById("detail-canvas");
+const detailCanvasLabel = document.getElementById("detail-canvas-label");
+const logInner = document.getElementById("log-inner");
+const tmplTextarea = document.getElementById("tmpl-textarea");
+const tmplStatus = document.getElementById("tmpl-status");
+const overrideInput = document.getElementById("override-input");
+const overrideSelect = document.getElementById("override-select");
+
+let requests = [];
+let selectedId = null;
+let connected = false;
+let logLines = [];
+let lastLogCount = 0;
+
+function setConnected(ok) {
+  connected = ok;
+  dot.className = ok ? "ok" : "";
+  statusLabel.textContent = ok ? "Mock Server Connected" : "Disconnected";
+}
+
+function fmtTs(ts) {
+  if (!ts) return "";
+  const s = String(ts);
+  if (s.length >= 15) return s.slice(9, 15).replace(/(\d{2})(\d{2})(\d{2})/, "$1:$2:$3");
+  return s.slice(0, 15);
+}
+
+function renderTable() {
+  reqCount.textContent = requests.length;
+  const rows = requests.map(r => {
+    const tr = document.createElement("tr");
+    if (r.id === selectedId) tr.classList.add("selected");
+    tr.dataset.id = r.id;
+    tr.innerHTML = `
+      <td class="ts">${fmtTs(r.ts)}</td>
+      <td class="agent">${r.agent_name}</td>
+      <td>${r.temperature}</td>
+      <td>${r.max_tokens}</td>
+      <td class="${r.has_image ? "img-yes" : "img-no"}">${r.has_image ? "YES" : "-"}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text3);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.response || ""}</td>
+    `;
+    tr.addEventListener("click", () => selectRequest(r.id));
+    return tr;
+  });
+  reqTbody.replaceChildren(...rows);
+}
+
+async function selectRequest(id) {
+  selectedId = id;
+  renderTable();
+  const rec = requests.find(r => r.id === id);
+  if (!rec) return;
+
+  try {
+    const resp = await fetch(`${BASE}/dashboard/request_detail?id=${id}`);
+    const full = await resp.json();
+    const display = { ...full };
+    if (display.messages) {
+      display.messages = display.messages.map(m => {
+        if (!Array.isArray(m.content)) return m;
+        return { ...m, content: m.content.map(p => p.type === "image_url" ? { type: "image_url", image_url: { url: "[BASE64_IMAGE]" } } : p) };
+      });
+    }
+    detailJson.textContent = JSON.stringify(display, null, 2);
+  } catch {
+    detailJson.textContent = JSON.stringify({ ...rec, messages: "[fetch failed]" }, null, 2);
+  }
+
+  const ctx = detailCanvas.getContext("2d");
+  ctx.clearRect(0, 0, 184, 184);
+  detailCanvasLabel.textContent = "No image";
+
+  if (rec.saved_image_path) {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(184 / img.width, 184 / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      ctx.clearRect(0, 0, 184, 184);
+      ctx.drawImage(img, (184 - w) / 2, (184 - h) / 2, w, h);
+      detailCanvasLabel.textContent = rec.saved_image_path.split("/").pop();
+    };
+    img.src = `${BASE}/${rec.saved_image_path}`;
+  } else {
+    const full = requests.find(r => r.id === id);
+    if (full?.has_image) {
+      try {
+        const resp = await fetch(`${BASE}/dashboard/request_detail?id=${id}`);
+        const data = await resp.json();
+        const msgs = data.messages || [];
+        for (const msg of msgs) {
+          if (!Array.isArray(msg.content)) continue;
+          for (const part of msg.content) {
+            if (part.type === "image_url") {
+              const url = part.image_url?.url || "";
+              if (url.startsWith("data:image/")) {
+                const img = new Image();
+                img.onload = () => {
+                  const scale = Math.min(184 / img.width, 184 / img.height);
+                  const w = img.width * scale, h = img.height * scale;
+                  ctx.clearRect(0, 0, 184, 184);
+                  ctx.drawImage(img, (184 - w) / 2, (184 - h) / 2, w, h);
+                  detailCanvasLabel.textContent = "base64 image";
+                };
+                img.src = url;
+                return;
+              }
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }
+}
+
+function addLogLine(text, cls = "") {
+  const now = new Date().toISOString().slice(11, 19);
+  logLines.push({ ts: now, text, cls });
+  if (logLines.length > 500) logLines.shift();
+  const row = document.createElement("div");
+  row.className = "log-row new-row";
+  row.innerHTML = `<span class="log-ts">${now}</span><span class="log-text ${cls}">${text}</span>`;
+  logInner.appendChild(row);
+  logInner.scrollTop = logInner.scrollHeight;
+}
+
+async function pollLog() {
+  try {
+    const resp = await fetch(`${BASE}/dashboard/log`);
+    const data = await resp.json();
+    const lines = data.lines || [];
+    if (lines.length > lastLogCount) {
+      lines.slice(lastLogCount).forEach(l => {
+        const cls = l.includes("REQ ") ? "req" : l.includes("RESP ") ? "resp" : l.includes("error") || l.includes("ERROR") ? "err" : "";
+        addLogLine(l, cls);
+      });
+      lastLogCount = lines.length;
+    }
+  } catch { /* server down */ }
+}
+
+async function pollRequests() {
+  try {
+    const resp = await fetch(`${BASE}/dashboard/requests`);
+    if (!resp.ok) { setConnected(false); return; }
+    setConnected(true);
+    const data = await resp.json();
+    const incoming = data.requests || [];
+    const existingIds = new Set(requests.map(r => r.id));
+    let changed = false;
+    for (const r of incoming) {
+      if (!existingIds.has(r.id)) {
+        requests.unshift(r);
+        changed = true;
+        addLogLine(`${r.agent_name} temp=${r.temperature} tokens=${r.max_tokens} img=${r.has_image ? "yes" : "no"}`, "req");
+      }
+    }
+    if (changed) renderTable();
+  } catch {
+    setConnected(false);
+  }
+}
+
+function setupSSE() {
+  const es = new EventSource(`${BASE}/dashboard/events`);
+  es.addEventListener("connected", () => { setConnected(true); addLogLine("SSE connected", "ok"); });
+  es.addEventListener("request", e => {
+    try {
+      const r = JSON.parse(e.data);
+      if (!requests.find(x => x.id === r.id)) {
+        requests.unshift(r);
+        renderTable();
+        addLogLine(`${r.agent_name} temp=${r.temperature} tokens=${r.max_tokens} img=${r.has_image ? "yes" : "no"}`, "req");
+      }
+    } catch { /* ignore */ }
+  });
+  es.onerror = () => { setConnected(false); };
+}
+
+async function loadTemplates() {
+  try {
+    const resp = await fetch(`${BASE}/dashboard/templates`);
+    const data = await resp.json();
+    tmplTextarea.value = JSON.stringify(data, null, 2);
+    updateOverrideSelect(data);
+    tmplStatus.textContent = "Loaded";
+    setTimeout(() => { tmplStatus.textContent = ""; }, 2000);
+  } catch {
+    tmplStatus.textContent = "Server offline";
+  }
+}
+
+function updateOverrideSelect(templates) {
+  const opts = [new Option("-- pick template --", "")];
+  for (const [key, tmpl] of Object.entries(templates)) {
+    const responses = tmpl.responses || [];
+    responses.forEach((r, i) => opts.push(new Option(`${key}[${i}]: ${r.slice(0, 40)}`, r)));
+  }
+  overrideSelect.replaceChildren(...opts);
+}
+
+async function saveTemplates() {
+  try {
+    const data = JSON.parse(tmplTextarea.value);
+    const resp = await fetch(`${BASE}/dashboard/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const result = await resp.json();
+    tmplStatus.textContent = result.ok ? "Saved!" : `Error: ${result.error}`;
+    if (result.ok) updateOverrideSelect(data);
+    setTimeout(() => { tmplStatus.textContent = ""; }, 2500);
+  } catch (e) {
+    tmplStatus.textContent = `JSON error: ${e.message}`;
+  }
+}
+
+async function forceOverride() {
+  const content = overrideInput.value.trim() || overrideSelect.value;
+  if (!content) { addLogLine("No override content set", "warn"); return; }
+  try {
+    await fetch(`${BASE}/dashboard/override`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    addLogLine(`Override queued: ${content.slice(0, 60)}`, "resp");
+    overrideInput.value = "";
+  } catch {
+    addLogLine("Override failed — server offline", "err");
+  }
+}
+
+document.getElementById("btn-clear").addEventListener("click", () => { requests = []; selectedId = null; renderTable(); });
+document.getElementById("btn-clear-log").addEventListener("click", () => { logLines = []; lastLogCount = 0; logInner.replaceChildren(); });
+document.getElementById("btn-tmpl-reload").addEventListener("click", loadTemplates);
+document.getElementById("btn-tmpl-save").addEventListener("click", saveTemplates);
+document.getElementById("btn-force").addEventListener("click", forceOverride);
+overrideSelect.addEventListener("change", () => { if (overrideSelect.value) overrideInput.value = overrideSelect.value; });
+
+setupSSE();
+loadTemplates();
+setInterval(pollRequests, 800);
+setInterval(pollLog, 1500);
+addLogLine("Dashboard ready. Waiting for server...", "ok");
+</script>
+</body>
+</html>

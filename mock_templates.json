@@ -1,0 +1,50 @@
+{
+  "WATCHER": {
+    "delay": 1.5,
+    "responses": [
+      "The canvas shows a blank white area. No drawing has been made yet. Recommend starting with a basic outline.",
+      "I can see partial strokes in the upper-left quadrant. The shape resembles an ear or head outline.",
+      "Progress detected: curved lines forming a circular head shape. Eyes area is still empty.",
+      "Canvas shows a cat head outline with two triangular ears. Eyes and whiskers are missing.",
+      "Image saved at {saved_image_path}. Visible: cat face with eyes drawn. Whiskers and mouth remain."
+    ]
+  },
+  "CRITIC": {
+    "delay": 1.8,
+    "responses": [
+      "No strokes visible. The drawing has not started. Action is required immediately.",
+      "The head shape is too small and positioned off-center. Proportions need adjustment.",
+      "Ears are asymmetric. Left ear is larger than right. Suggest corrective drag action.",
+      "Eyes are placed too high. Whiskers are absent. Overall composition is weak.",
+      "Drawing is 70% complete. Missing: nose, mouth, whiskers. Quality is acceptable for current cycle."
+    ]
+  },
+  "PARSER": {
+    "delay": 1.2,
+    "responses": [
+      "drag(160,120,320,240)",
+      "drag(200,150,380,280)",
+      "drag(240,180,400,300)",
+      "drag(180,200,360,320)",
+      "drag(300,250,460,370)"
+    ]
+  },
+  "JUDGE": {
+    "delay": 2.0,
+    "responses": [
+      "EXECUTE:drag(160,120,320,240)",
+      "EXECUTE:drag(200,150,380,280)",
+      "EXECUTE:drag(240,180,400,300)",
+      "EXECUTE:drag(300,250,460,370)",
+      "DONE"
+    ]
+  },
+  "DEFAULT": {
+    "delay": 2.5,
+    "responses": [
+      "drag(200,200,400,350)",
+      "drag(150,100,350,300)",
+      "drag(250,150,450,320)"
+    ]
+  }
+}
