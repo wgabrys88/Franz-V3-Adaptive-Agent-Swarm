@@ -10,11 +10,6 @@
 
 ---
 
-![Dashboard Screenshot](docs/screenshot_placeholder.png)
-> *Replace with a real screenshot of `panel.html` or `LM_Studio_Mocked_Server.html`*
-
----
-
 ## Features
 
 - **Multi-agent debate loop** — WATCHER, CRITIC, PARSER run in parallel each cycle; JUDGE arbitrates
