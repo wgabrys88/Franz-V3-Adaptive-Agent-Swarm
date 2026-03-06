@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Franz V3 Execution Replay</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#0a0a0c;--surface:#121218;--surface2:#18181f;--border:#252530;
+--accent:#4a9eff;--text:#e4e4ec;--text-dim:#55556a;--text-mid:#8e8ea8;
+--ok:#3ecf8e;--warn:#f0a000;--err:#ff4455;
+--mono:"Cascadia Code","Fira Code","Consolas",monospace
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:13px}
+#root{display:grid;width:100vw;height:calc(100vh - 28px)}
+#v-gutter{grid-column:2;grid-row:1/4;background:var(--border);cursor:col-resize;transition:background .15s;z-index:10}
+#v-gutter:hover,#v-gutter.dragging{background:var(--accent)}
+#h-gutter{grid-column:3;grid-row:2;background:var(--border);cursor:row-resize;transition:background .15s;z-index:10}
+#h-gutter:hover,#h-gutter.dragging{background:var(--accent)}
+#pane-canvas{grid-column:1;grid-row:1/4;display:flex;flex-direction:column;overflow:hidden}
+.pane-hdr{display:flex;align-items:center;gap:8px;padding:5px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim)}
+.badge{padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;background:var(--border);color:var(--text-mid)}
+.badge.ok{background:#1a3d2e;color:var(--ok)}
+.badge.warn{background:#3d2e00;color:var(--warn)}
+.badge.err{background:#3d0a10;color:var(--err)}
+.spacer{flex:1}
+.hdr-btn{padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;background:var(--border);color:var(--text-mid);border:none;font-family:inherit}
+.hdr-btn:hover{background:var(--accent);color:#fff}
+#canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#050508;position:relative;overflow:hidden}
+#canvas-stack{display:grid;min-width:1px;min-height:1px}
+#canvas-stack canvas{grid-area:1/1}
+#c-overlay{pointer-events:none}
+.canvas-status{position:absolute;bottom:6px;right:8px;font-size:10px;color:var(--text-dim);font-family:var(--mono);pointer-events:none}
+#pane-graph{grid-column:3;grid-row:1;display:flex;flex-direction:column;overflow:hidden}
+#pane-log{grid-column:3;grid-row:3;display:flex;flex-direction:column;overflow:hidden}
+.agent-status-bar{display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.agent-chip{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--surface2);border:1px solid var(--border);transition:border-color .2s}
+.chip-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.chip-name{color:var(--text-mid)}
+.chip-status{color:var(--text-dim)}
+.agent-chip.thinking{border-color:var(--warn)}
+.agent-chip.thinking .chip-dot{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+.agent-chip.idle .chip-dot{background:var(--text-dim)}
+.agent-chip.ok .chip-dot{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.agent-chip.error .chip-dot{background:var(--err)}
+#graph-canvas-wrap{flex:1;position:relative;overflow:hidden;background:var(--bg)}
+#graph-svg{width:100%;height:100%;position:absolute;top:0;left:0;pointer-events:none}
+#graph-nodes{width:100%;height:100%;position:absolute;top:0;left:0}
+.gnode{position:absolute;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:grab;user-select:none;white-space:nowrap;transition:border-color .2s,box-shadow .2s;z-index:2}
+.gnode:active{cursor:grabbing}
+.gnode.active{border-color:var(--accent);box-shadow:0 0 12px color-mix(in srgb,var(--accent) 40%,transparent)}
+.gnode.pulse{animation:nodepulse .4s ease-out}
+@keyframes nodepulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
+.gnode-label{font-size:9px;color:var(--text-dim);margin-top:2px;font-weight:400;letter-spacing:.03em;text-transform:none}
+#log-list{flex:1;overflow-y:auto;font-family:var(--mono);font-size:11px;padding:4px 0}
+#log-list::-webkit-scrollbar{width:4px}
+#log-list::-webkit-scrollbar-track{background:transparent}
+#log-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.log-row{display:flex;gap:8px;padding:2px 10px;border-bottom:1px solid color-mix(in srgb,var(--border) 40%,transparent)}
+.log-row:hover{background:var(--surface)}
+.log-ts{color:var(--text-dim);flex-shrink:0;font-size:10px}
+.log-lvl{flex-shrink:0;font-size:10px;font-weight:700;min-width:40px}
+.log-lvl.info{color:var(--accent)}
+.log-lvl.ok{color:var(--ok)}
+.log-lvl.warn{color:var(--warn)}
+.log-lvl.error{color:var(--err)}
+.log-lvl.pipe{color:#a070ff}
+.log-lvl.swarm{color:#ff9040}
+.log-lvl.action{color:#ff4488}
+.log-lvl.capture{color:#40d0ff}
+.log-lvl.done{color:var(--ok)}
+.log-text{color:var(--text);word-break:break-all}
+#statusbar{height:28px;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--surface);border-top:1px solid var(--border);font-size:11px;color:var(--text-dim);flex-shrink:0;position:fixed;bottom:0;left:0;right:0;z-index:20}
+#progress-wrap{flex:1;height:6px;background:var(--border);border-radius:3px;cursor:pointer;position:relative}
+#progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .1s linear;pointer-events:none}
+#progress-thumb{position:absolute;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:var(--accent);pointer-events:none;transition:left .1s linear}
+.ctrl-btn{padding:2px 10px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;background:var(--border);color:var(--text-mid);border:none;font-family:inherit}
+.ctrl-btn:hover{background:var(--accent);color:#fff}
+.ctrl-btn.active{background:var(--accent);color:#fff}
+#speed-wrap{display:flex;align-items:center;gap:6px;font-size:10px}
+#speed-slider{width:80px;accent-color:var(--accent)}
+#load-btn{padding:3px 14px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;background:color-mix(in srgb,var(--accent) 20%,var(--surface));color:var(--accent);border:1px solid var(--accent);font-family:inherit}
+#load-btn:hover{background:var(--accent);color:#fff}
+#event-counter{font-size:10px;color:var(--text-dim);font-family:var(--mono)}
+#phase-badge{padding:1px 8px;border-radius:20px;font-size:10px;font-weight:700;background:var(--border);color:var(--text-mid)}
+#demo-msg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-dim);font-size:12px;pointer-events:none;line-height:1.8}
+#demo-msg strong{color:var(--text-mid);display:block;font-size:14px;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="pane-canvas">
+    <div class="pane-hdr">
+      <span>Paint Canvas</span>
+      <span class="badge" id="canvas-badge">blank</span>
+      <span class="spacer"></span>
+      <button class="hdr-btn" id="clear-canvas-btn">Clear</button>
+      <button class="hdr-btn" id="layout-btn">Auto-Layout</button>
+    </div>
+    <div id="canvas-wrap">
+      <div id="canvas-stack">
+        <canvas id="c-paint"></canvas>
+        <canvas id="c-overlay"></canvas>
+      </div>
+      <div id="demo-msg">
+        <strong>Franz V3 Execution Replay</strong>
+        Load an events.txt file from a Franz V3 logs/ folder to begin replay
+      </div>
+      <div class="canvas-status" id="canvas-status">640 x 640</div>
+    </div>
+  </div>
+  <div id="v-gutter"></div>
+  <div id="pane-graph">
+    <div class="pane-hdr">
+      <span>V3 Architecture</span>
+      <span class="badge" id="graph-badge">idle</span>
+      <span class="spacer"></span>
+      <span id="phase-badge">—</span>
+    </div>
+    <div class="agent-status-bar" id="agent-status-bar"></div>
+    <div id="graph-canvas-wrap">
+      <svg id="graph-svg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill="#252530"/>
+          </marker>
+          <marker id="arr-accent" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill="#4a9eff"/>
+          </marker>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g id="edge-layer"></g>
+        <g id="packet-layer"></g>
+      </svg>
+      <div id="graph-nodes"></div>
+    </div>
+  </div>
+  <div id="h-gutter"></div>
+  <div id="pane-log">
+    <div class="pane-hdr">
+      <span>Event Log</span>
+      <span class="badge" id="log-badge">0 events</span>
+      <span class="spacer"></span>
+      <button class="hdr-btn" id="autoscroll-btn">Auto-scroll ON</button>
+    </div>
+    <div id="log-list"></div>
+  </div>
+</div>
+<div id="statusbar">
+  <button id="load-btn">Load Execution Log</button>
+  <input type="file" id="file-input" accept=".txt" style="display:none"/>
+  <button class="ctrl-btn" id="play-btn">Play</button>
+  <button class="ctrl-btn" id="step-btn">Step</button>
+  <button class="ctrl-btn" id="reset-btn">Reset</button>
+  <div id="progress-wrap">
+    <div id="progress-fill" style="width:0%"></div>
+    <div id="progress-thumb" style="left:0%"></div>
+  </div>
+  <div id="speed-wrap">
+    <span>Speed</span>
+    <input type="range" id="speed-slider" min="-10" max="10" value="0" step="1"/>
+    <span id="speed-label">1x</span>
+  </div>
+  <span id="event-counter">0 / 0</span>
+</div>
+
+<script>
+const CANVAS_W = 640, CANVAS_H = 640;
+const SPEED_BASE = 2, SPEED_DIV = 5;
+const DEFAULT_EVENT_MS = 400;
+const PACKET_SPEED_PX = 180;
+
+const NODE_DEFS = [
+  {id:"runner",  label:"Runner",    sub:"continuous loop",  col:"#a070ff"},
+  {id:"hub",     label:"Hub",       sub:"franz_hub.py",     col:"#4a9eff"},
+  {id:"hubpipe", label:"HubPipe",   sub:"_pipe_reader",     col:"#6090cc"},
+  {id:"hubcap",  label:"HubCap",    sub:"_do_capture_cycle",col:"#40d0ff"},
+  {id:"hubvlm",  label:"HubVLM",    sub:"/vlm proxy",       col:"#ff9040"},
+  {id:"hubact",  label:"HubAct",    sub:"action executor",  col:"#ff4488"},
+  {id:"watcher", label:"Watcher",   sub:"agent_watcher.py", col:"#3ecf8e"},
+  {id:"critic",  label:"Critic",    sub:"agent_critic.py",  col:"#f0a000"},
+  {id:"parser",  label:"Parser",    sub:"agent_parser.py",  col:"#ff6060"},
+  {id:"judge",   label:"Judge",     sub:"agent_judge.py",   col:"#ff4488"},
+  {id:"base",    label:"AgentBase", sub:"agent_base.py",    col:"#8888aa"},
+  {id:"memory",  label:"memory.txt",sub:"shared state",     col:"#c0a060"},
+  {id:"win32",   label:"Win32",     sub:"win32.py",         col:"#cc6060"},
+  {id:"panel",   label:"Panel",     sub:"panel.html",       col:"#55556a"},
+];
+
+const EDGE_DEFS = [
+  {from:"runner", to:"hubpipe", label:"stdout pipe", pipe:true},
+  {from:"hubpipe",to:"hub",     label:"dispatch"},
+  {from:"hub",    to:"hubcap",  label:"capture"},
+  {from:"hub",    to:"hubvlm",  label:"vlm sem"},
+  {from:"hub",    to:"hubact",  label:"action queue"},
+  {from:"hubact", to:"win32",   label:"drag/click"},
+  {from:"hubcap", to:"watcher", label:"/frame"},
+  {from:"hubcap", to:"judge",   label:"/frame"},
+  {from:"runner", to:"watcher", label:"subprocess"},
+  {from:"runner", to:"critic",  label:"subprocess"},
+  {from:"runner", to:"parser",  label:"subprocess"},
+  {from:"runner", to:"judge",   label:"subprocess"},
+  {from:"watcher",to:"base",    label:"imports"},
+  {from:"critic", to:"base",    label:"imports"},
+  {from:"parser", to:"base",    label:"imports"},
+  {from:"judge",  to:"base",    label:"imports"},
+  {from:"base",   to:"hubvlm",  label:"POST /vlm"},
+  {from:"runner", to:"memory",  label:"read/write"},
+  {from:"watcher",to:"memory",  label:"read"},
+  {from:"critic", to:"memory",  label:"read"},
+  {from:"parser", to:"memory",  label:"read"},
+  {from:"judge",  to:"memory",  label:"read"},
+  {from:"hub",    to:"panel",   label:"SSE"},
+];
+
+const DEFAULT_LAYOUT = {
+  runner: {x:0.18, y:0.18},
+  hub:    {x:0.50, y:0.18},
+  hubpipe:{x:0.34, y:0.18},
+  hubcap: {x:0.50, y:0.36},
+  hubvlm: {x:0.66, y:0.28},
+  hubact: {x:0.66, y:0.50},
+  watcher:{x:0.18, y:0.50},
+  critic: {x:0.34, y:0.50},
+  parser: {x:0.18, y:0.68},
+  judge:  {x:0.34, y:0.68},
+  base:   {x:0.50, y:0.60},
+  memory: {x:0.18, y:0.84},
+  win32:  {x:0.82, y:0.50},
+  panel:  {x:0.82, y:0.18},
+};
+
+const AGENT_IDS = ["WATCHER","CRITIC","PARSER","JUDGE","RUNNER","HUB"];
+const AGENT_COLORS = {WATCHER:"#3ecf8e",CRITIC:"#f0a000",PARSER:"#ff6060",JUDGE:"#ff4488",RUNNER:"#a070ff",HUB:"#4a9eff"};
+
+let nodePos = {};
+let graphW = 1, graphH = 1;
+let packets = [];
+let packetId = 0;
+let animFrame = null;
+let lastAnimTs = 0;
+
+let events = [];
+let cursor = 0;
+let playing = false;
+let playTimer = null;
+let autoScroll = true;
+let strokeCount = 0;
+let agentStates = {};
+let loggedCount = 0;
+
+const cPaint = document.getElementById("c-paint");
+const cOverlay = document.getElementById("c-overlay");
+const ctxPaint = cPaint.getContext("2d");
+const ctxOverlay = cOverlay.getContext("2d");
+const graphSvg = document.getElementById("graph-svg");
+const edgeLayer = document.getElementById("edge-layer");
+const packetLayer = document.getElementById("packet-layer");
+const graphNodes = document.getElementById("graph-nodes");
+const logList = document.getElementById("log-list");
+const progressFill = document.getElementById("progress-fill");
+const progressThumb = document.getElementById("progress-thumb");
+const eventCounter = document.getElementById("event-counter");
+const phaseBadge = document.getElementById("phase-badge");
+const graphBadge = document.getElementById("graph-badge");
+const canvasBadge = document.getElementById("canvas-badge");
+const logBadge = document.getElementById("log-badge");
+const demoMsg = document.getElementById("demo-msg");
+const canvasStatus = document.getElementById("canvas-status");
+const speedSlider = document.getElementById("speed-slider");
+const speedLabel = document.getElementById("speed-label");
+
+function speedMultiplier() {
+  return Math.pow(SPEED_BASE, parseFloat(speedSlider.value) / SPEED_DIV);
+}
+
+speedSlider.addEventListener("input", () => {
+  const m = speedMultiplier();
+  speedLabel.textContent = m < 1 ? (m).toFixed(2)+"x" : m.toFixed(m >= 10 ? 0 : 1)+"x";
+});
+
+function initCanvas() {
+  cPaint.width = CANVAS_W; cPaint.height = CANVAS_H;
+  cOverlay.width = CANVAS_W; cOverlay.height = CANVAS_H;
+  const stack = document.getElementById("canvas-stack");
+  stack.style.width = CANVAS_W+"px";
+  stack.style.height = CANVAS_H+"px";
+  canvasStatus.textContent = CANVAS_W+" x "+CANVAS_H;
+}
+
+function clearPaint() {
+  ctxPaint.clearRect(0,0,CANVAS_W,CANVAS_H);
+  strokeCount = 0;
+  canvasBadge.textContent = "blank";
+  canvasBadge.className = "badge";
+}
+
+function drawDrag(x1,y1,x2,y2) {
+  ctxPaint.beginPath();
+  ctxPaint.moveTo(x1,y1);
+  ctxPaint.lineTo(x2,y2);
+  ctxPaint.strokeStyle = `hsl(${(strokeCount*37)%360},70%,60%)`;
+  ctxPaint.lineWidth = 3;
+  ctxPaint.lineCap = "round";
+  ctxPaint.stroke();
+  strokeCount++;
+  canvasBadge.textContent = strokeCount+" stroke"+(strokeCount!==1?"s":"");
+  canvasBadge.className = "badge ok";
+  demoMsg.style.display = "none";
+}
+
+function flashOverlay(x1,y1,x2,y2) {
+  ctxOverlay.clearRect(0,0,CANVAS_W,CANVAS_H);
+  ctxOverlay.strokeStyle = "rgba(255,68,136,0.9)";
+  ctxOverlay.lineWidth = 2;
+  ctxOverlay.setLineDash([4,4]);
+  ctxOverlay.strokeRect(Math.min(x1,x2),Math.min(y1,y2),Math.abs(x2-x1),Math.abs(y2-y1));
+  ctxOverlay.setLineDash([]);
+  setTimeout(()=>ctxOverlay.clearRect(0,0,CANVAS_W,CANVAS_H), 600);
+}
+</script>
+
+<script>
+function loadLayout() {
+  try {
+    const s = localStorage.getItem("v3replay_layout");
+    if (s) return JSON.parse(s);
+  } catch(_) {}
+  return null;
+}
+function saveLayout() {
+  try { localStorage.setItem("v3replay_layout", JSON.stringify(nodePos)); } catch(_) {}
+}
+function applyDefaultLayout() {
+  graphW = document.getElementById("graph-canvas-wrap").offsetWidth || 600;
+  graphH = document.getElementById("graph-canvas-wrap").offsetHeight || 400;
+  nodePos = {};
+  for (const [id, frac] of Object.entries(DEFAULT_LAYOUT)) {
+    nodePos[id] = {x: frac.x * graphW, y: frac.y * graphH};
+  }
+}
+function buildGraph() {
+  graphW = document.getElementById("graph-canvas-wrap").offsetWidth || 600;
+  graphH = document.getElementById("graph-canvas-wrap").offsetHeight || 400;
+  const saved = loadLayout();
+  if (saved && Object.keys(saved).length === NODE_DEFS.length) {
+    nodePos = saved;
+  } else {
+    applyDefaultLayout();
+  }
+  graphNodes.innerHTML = "";
+  for (const nd of NODE_DEFS) {
+    const el = document.createElement("div");
+    el.className = "gnode";
+    el.id = "gnode-"+nd.id;
+    el.style.borderColor = nd.col+"55";
+    el.innerHTML = `<div style="color:${nd.col}">${nd.label}</div><div class="gnode-label">${nd.sub}</div>`;
+    el.style.left = nodePos[nd.id].x+"px";
+    el.style.top = nodePos[nd.id].y+"px";
+    makeDraggable(el, nd.id);
+    graphNodes.appendChild(el);
+  }
+  drawEdges();
+  buildAgentChips();
+}
+function makeDraggable(el, id) {
+  let ox=0, oy=0, sx=0, sy=0;
+  el.addEventListener("mousedown", e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    sx = e.clientX; sy = e.clientY;
+    ox = nodePos[id].x; oy = nodePos[id].y;
+    const onMove = ev => {
+      nodePos[id] = {x: ox+(ev.clientX-sx), y: oy+(ev.clientY-sy)};
+      el.style.left = nodePos[id].x+"px";
+      el.style.top = nodePos[id].y+"px";
+      drawEdges();
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      saveLayout();
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+function drawEdges() {
+  edgeLayer.innerHTML = "";
+  for (const ed of EDGE_DEFS) {
+    const a = nodePos[ed.from], b = nodePos[ed.to];
+    if (!a || !b) continue;
+    const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+    line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
+    line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
+    line.setAttribute("stroke", ed.pipe ? "#a070ff" : "#252530");
+    line.setAttribute("stroke-width", ed.pipe ? "2" : "1");
+    if (ed.pipe) line.setAttribute("stroke-dasharray","6,3");
+    line.setAttribute("marker-end", ed.pipe ? "url(#arr-accent)" : "url(#arr)");
+    line.setAttribute("data-from", ed.from);
+    line.setAttribute("data-to", ed.to);
+    edgeLayer.appendChild(line);
+    if (ed.label) {
+      const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
+      txt.setAttribute("x", mx); txt.setAttribute("y", my-3);
+      txt.setAttribute("text-anchor","middle");
+      txt.setAttribute("font-size","8");
+      txt.setAttribute("fill","#55556a");
+      txt.setAttribute("font-family","system-ui,sans-serif");
+      txt.textContent = ed.label;
+      edgeLayer.appendChild(txt);
+    }
+  }
+}
+function buildAgentChips() {
+  const bar = document.getElementById("agent-status-bar");
+  bar.innerHTML = "";
+  for (const id of AGENT_IDS) {
+    const chip = document.createElement("div");
+    chip.className = "agent-chip idle";
+    chip.id = "chip-"+id;
+    chip.innerHTML = `<div class="chip-dot" style="background:${AGENT_COLORS[id]||'#55556a'}"></div><span class="chip-name">${id}</span><span class="chip-status" id="chipst-${id}">idle</span>`;
+    bar.appendChild(chip);
+  }
+}
+function setAgentStatus(agent, status) {
+  agentStates[agent] = status;
+  const chip = document.getElementById("chip-"+agent.toUpperCase());
+  const st = document.getElementById("chipst-"+agent.toUpperCase());
+  if (!chip) return;
+  chip.className = "agent-chip "+status;
+  if (st) st.textContent = status;
+  const nd = document.getElementById("gnode-"+agent.toLowerCase());
+  if (nd) {
+    nd.classList.toggle("active", status === "thinking");
+    if (status === "thinking") {
+      nd.classList.remove("pulse");
+      void nd.offsetWidth;
+      nd.classList.add("pulse");
+    }
+  }
+}
+function pulseNode(id) {
+  const nd = document.getElementById("gnode-"+id);
+  if (!nd) return;
+  nd.classList.remove("pulse");
+  void nd.offsetWidth;
+  nd.classList.add("pulse");
+}
+function spawnPacket(fromId, toId, color, label) {
+  const a = nodePos[fromId], b = nodePos[toId];
+  if (!a || !b) return;
+  const dx = b.x-a.x, dy = b.y-a.y;
+  const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+  const dur = (dist / PACKET_SPEED_PX) * 1000;
+  packets.push({id:packetId++, from:fromId, to:toId, color, label, start:performance.now(), dur, ax:a.x, ay:a.y, bx:b.x, by:b.y, trail:[]});
+  if (!animFrame) animFrame = requestAnimationFrame(animLoop);
+}
+function animLoop(ts) {
+  const dt = ts - lastAnimTs; lastAnimTs = ts;
+  packetLayer.innerHTML = "";
+  packets = packets.filter(p => {
+    const t = Math.min(1,(ts-p.start)/p.dur);
+    const x = p.ax + (p.bx-p.ax)*t;
+    const y = p.ay + (p.by-p.ay)*t;
+    p.trail.push({x,y,t:ts});
+    p.trail = p.trail.filter(pt => ts-pt.t < 300);
+    for (let i=1;i<p.trail.length;i++) {
+      const seg = document.createElementNS("http://www.w3.org/2000/svg","line");
+      const alpha = (i/p.trail.length)*0.5;
+      seg.setAttribute("x1",p.trail[i-1].x); seg.setAttribute("y1",p.trail[i-1].y);
+      seg.setAttribute("x2",p.trail[i].x); seg.setAttribute("y2",p.trail[i].y);
+      seg.setAttribute("stroke",p.color); seg.setAttribute("stroke-width","2");
+      seg.setAttribute("stroke-opacity",alpha.toFixed(2));
+      packetLayer.appendChild(seg);
+    }
+    const circ = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    circ.setAttribute("cx",x); circ.setAttribute("cy",y); circ.setAttribute("r","5");
+    circ.setAttribute("fill",p.color); circ.setAttribute("filter","url(#glow)");
+    packetLayer.appendChild(circ);
+    if (p.label) {
+      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
+      txt.setAttribute("x",x+7); txt.setAttribute("y",y-5);
+      txt.setAttribute("font-size","8"); txt.setAttribute("fill",p.color);
+      txt.setAttribute("font-family","var(--mono)");
+      txt.textContent = p.label;
+      packetLayer.appendChild(txt);
+    }
+    return t < 1;
+  });
+  animFrame = packets.length > 0 ? requestAnimationFrame(animLoop) : null;
+}
+</script>
+
+<script>
+const TS_RE = /^\[(\d{8}_\d{6}_\d+)\]\s*/;
+const ISO_RE = /^\[(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\]\s*/;
+const DRAG_RE = /drag\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/;
+
+function parseTimestamp(raw) {
+  let m = TS_RE.exec(raw);
+  if (m) {
+    const s = m[1];
+    const iso = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:${s.slice(13,15)}.${s.slice(16,22)}Z`;
+    return {ms: new Date(iso).getTime(), rest: raw.slice(m[0].length)};
+  }
+  m = ISO_RE.exec(raw);
+  if (m) return {ms: new Date(m[1]).getTime(), rest: raw.slice(m[0].length)};
+  return {ms: null, rest: raw};
+}
+
+function parseLine(raw) {
+  const {ms, rest} = parseTimestamp(raw.trim());
+  if (!rest) return null;
+
+  if (rest.startsWith("[PIPE] ")) {
+    const pipe = rest.slice(7);
+    if (pipe.startsWith("ACTION:")) {
+      const drag = DRAG_RE.exec(pipe);
+      return {ms, type:"action", raw:pipe, drag: drag ? [+drag[1],+drag[2],+drag[3],+drag[4]] : null};
+    }
+    if (pipe.startsWith("SWARM:")) {
+      const parts = pipe.slice(6).split("|",4);
+      return {ms, type:"swarm", agent:parts[0]||"", dir:parts[1]||"", text:parts[2]||""};
+    }
+    if (pipe.startsWith("STATUS:")) {
+      const sp = pipe.slice(7).split("|",2);
+      return {ms, type:"status", agent:sp[0]||"", status:sp[1]||"idle"};
+    }
+    if (pipe.startsWith("LOG:")) {
+      const sp = pipe.slice(4).split("|",2);
+      return sp.length===2 ? {ms, type:"log", level:sp[0], text:sp[1]} : {ms, type:"log", level:"info", text:pipe.slice(4)};
+    }
+    if (pipe.startsWith("CAPTURE:")) return {ms, type:"capture"};
+    if (pipe.startsWith("DONE:")) return {ms, type:"done"};
+    if (pipe.startsWith("OVERLAY:")) {
+      try { return {ms, type:"overlay", data:JSON.parse(pipe.slice(8))}; } catch(_) {}
+    }
+    return {ms, type:"pipe", text:pipe};
+  }
+
+  if (rest.startsWith("[SWARM] ")) {
+    const body = rest.slice(8);
+    const m2 = /^(\w+)\s+(\w+):\s*(.*)$/.exec(body);
+    return m2 ? {ms, type:"swarm", agent:m2[1], dir:m2[2], text:m2[3]} : {ms, type:"swarm", agent:"?", dir:"output", text:body};
+  }
+
+  const lvlM = /^\[([A-Z]+)\]\s*(.*)$/.exec(rest);
+  if (lvlM) return {ms, type:"log", level:lvlM[1].toLowerCase(), text:lvlM[2]};
+
+  return {ms, type:"log", level:"info", text:rest};
+}
+
+function parseFile(text) {
+  const lines = text.split(/\r?\n/);
+  const evts = [];
+  let prevMs = null;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const ev = parseLine(line);
+    if (!ev) continue;
+    if (ev.ms === null) ev.ms = prevMs !== null ? prevMs + DEFAULT_EVENT_MS : 0;
+    prevMs = ev.ms;
+    evts.push(ev);
+  }
+  for (let i=1;i<evts.length;i++) {
+    evts[i].delay = Math.min(Math.max(evts[i].ms - evts[i-1].ms, 50), 5000);
+  }
+  if (evts.length) evts[0].delay = 0;
+  return evts;
+}
+
+function addLogRow(ev) {
+  const row = document.createElement("div");
+  row.className = "log-row";
+  const ts = ev.ms ? new Date(ev.ms).toISOString().slice(11,23) : "--:--:--.---";
+  let lvlClass = "info", lvlText = ev.type.toUpperCase();
+  if (ev.type==="action") { lvlClass="action"; lvlText="ACTION"; }
+  else if (ev.type==="swarm") { lvlClass="swarm"; lvlText="SWARM"; }
+  else if (ev.type==="capture") { lvlClass="capture"; lvlText="CAPTURE"; }
+  else if (ev.type==="done") { lvlClass="done"; lvlText="DONE"; }
+  else if (ev.type==="pipe") { lvlClass="pipe"; lvlText="PIPE"; }
+  else if (ev.type==="log") { lvlClass=ev.level||"info"; lvlText=(ev.level||"info").toUpperCase(); }
+  else if (ev.type==="status") { lvlClass="info"; lvlText="STATUS"; }
+  let text = "";
+  if (ev.type==="swarm") text = `${ev.agent} → ${ev.dir}: ${ev.text}`;
+  else if (ev.type==="action") text = ev.raw;
+  else if (ev.type==="status") text = `${ev.agent} = ${ev.status}`;
+  else if (ev.type==="capture") text = "Screen capture triggered";
+  else if (ev.type==="done") text = "Task complete";
+  else text = ev.text || "";
+  row.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${lvlClass}">${lvlText}</span><span class="log-text">${text.replace(/</g,"&lt;")}</span>`;
+  logList.appendChild(row);
+  loggedCount++;
+  logBadge.textContent = loggedCount+" event"+(loggedCount!==1?"s":"");
+  if (autoScroll) logList.scrollTop = logList.scrollHeight;
+}
+
+function dispatchEvent(ev) {
+  addLogRow(ev);
+  switch(ev.type) {
+    case "action":
+      if (ev.drag) {
+        const [x1,y1,x2,y2] = ev.drag;
+        drawDrag(x1,y1,x2,y2);
+        flashOverlay(x1,y1,x2,y2);
+        spawnPacket("hubact","win32","#ff4488","drag");
+        pulseNode("win32");
+      }
+      break;
+    case "swarm": {
+      const ag = ev.agent.toLowerCase();
+      const col = AGENT_COLORS[ev.agent.toUpperCase()] || "#8888aa";
+      if (ev.dir==="output" || ev.dir==="execute") {
+        spawnPacket(ag, "hubpipe", col, ev.dir);
+        spawnPacket("hubpipe","hub","#6090cc","swarm");
+        if (ev.text.includes("drag") || ev.dir==="execute") {
+          spawnPacket("hub","hubact","#ff4488","action");
+        }
+      }
+      phaseBadge.textContent = `${ev.agent}: ${ev.dir}`;
+      phaseBadge.style.background = col+"33";
+      phaseBadge.style.color = col;
+      break;
+    }
+    case "status":
+      setAgentStatus(ev.agent, ev.status);
+      break;
+    case "capture":
+      spawnPacket("runner","hubpipe","#a070ff","CAPTURE:");
+      spawnPacket("hubpipe","hub","#6090cc","");
+      spawnPacket("hub","hubcap","#40d0ff","capture");
+      pulseNode("hubcap");
+      graphBadge.textContent = "capturing";
+      graphBadge.className = "badge warn";
+      break;
+    case "done":
+      phaseBadge.textContent = "DONE";
+      phaseBadge.style.background = "#1a3d2e";
+      phaseBadge.style.color = "#3ecf8e";
+      graphBadge.textContent = "done";
+      graphBadge.className = "badge ok";
+      for (const id of AGENT_IDS) setAgentStatus(id, "idle");
+      break;
+    case "log":
+      if (ev.text && ev.text.includes("Cycle")) {
+        const m = /Cycle\s+(\d+)/.exec(ev.text);
+        if (m) { phaseBadge.textContent = "Cycle "+m[1]; phaseBadge.style.background=""; phaseBadge.style.color=""; }
+        spawnPacket("runner","memory","#c0a060","write");
+        pulseNode("memory");
+      }
+      if (ev.text && ev.text.includes("Runner PID")) {
+        graphBadge.textContent = "running";
+        graphBadge.className = "badge ok";
+        spawnPacket("hub","runner","#a070ff","spawn");
+      }
+      if (ev.text && ev.text.includes("JUDGE approved")) {
+        spawnPacket("judge","hubpipe","#ff4488","EXECUTE:");
+        spawnPacket("hubpipe","hub","#6090cc","");
+        spawnPacket("hub","hubact","#ff4488","action");
+      }
+      break;
+    case "pipe":
+      spawnPacket("runner","hubpipe","#a070ff",ev.text.slice(0,12));
+      break;
+  }
+}
+
+function updateProgress() {
+  const pct = events.length > 1 ? (cursor / (events.length-1)) * 100 : 0;
+  progressFill.style.width = pct+"%";
+  progressThumb.style.left = pct+"%";
+  eventCounter.textContent = cursor+" / "+events.length;
+}
+
+function resetReplay() {
+  clearTimeout(playTimer);
+  playing = false;
+  cursor = 0;
+  logList.innerHTML = "";
+  loggedCount = 0;
+  logBadge.textContent = "0 events";
+  clearPaint();
+  for (const id of AGENT_IDS) setAgentStatus(id, "idle");
+  phaseBadge.textContent = "—";
+  phaseBadge.style.background = "";
+  phaseBadge.style.color = "";
+  graphBadge.textContent = "idle";
+  graphBadge.className = "badge";
+  packets = [];
+  updateProgress();
+  document.getElementById("play-btn").textContent = "Play";
+  document.getElementById("play-btn").classList.remove("active");
+}
+
+function stepForward() {
+  if (cursor >= events.length) return;
+  dispatchEvent(events[cursor]);
+  cursor++;
+  updateProgress();
+}
+
+function scheduleNext() {
+  if (!playing || cursor >= events.length) {
+    playing = false;
+    document.getElementById("play-btn").textContent = "Play";
+    document.getElementById("play-btn").classList.remove("active");
+    return;
+  }
+  const ev = events[cursor];
+  const delay = (ev.delay || DEFAULT_EVENT_MS) / speedMultiplier();
+  playTimer = setTimeout(() => { stepForward(); scheduleNext(); }, delay);
+}
+
+function togglePlay() {
+  if (cursor >= events.length) resetReplay();
+  playing = !playing;
+  const btn = document.getElementById("play-btn");
+  btn.textContent = playing ? "Pause" : "Play";
+  btn.classList.toggle("active", playing);
+  if (playing) scheduleNext();
+  else clearTimeout(playTimer);
+}
+
+document.getElementById("play-btn").addEventListener("click", togglePlay);
+document.getElementById("step-btn").addEventListener("click", () => { clearTimeout(playTimer); playing=false; document.getElementById("play-btn").textContent="Play"; document.getElementById("play-btn").classList.remove("active"); stepForward(); });
+document.getElementById("reset-btn").addEventListener("click", resetReplay);
+document.getElementById("clear-canvas-btn").addEventListener("click", clearPaint);
+document.getElementById("layout-btn").addEventListener("click", () => { localStorage.removeItem("v3replay_layout"); applyDefaultLayout(); buildGraph(); });
+document.getElementById("autoscroll-btn").addEventListener("click", function() { autoScroll=!autoScroll; this.textContent="Auto-scroll "+(autoScroll?"ON":"OFF"); });
+
+document.getElementById("load-btn").addEventListener("click", () => document.getElementById("file-input").click());
+document.getElementById("file-input").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    resetReplay();
+    events = parseFile(ev.target.result);
+    demoMsg.style.display = "none";
+    document.getElementById("load-btn").textContent = file.name;
+    updateProgress();
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+const progressWrap = document.getElementById("progress-wrap");
+progressWrap.addEventListener("click", e => {
+  if (!events.length) return;
+  const rect = progressWrap.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (e.clientX-rect.left)/rect.width));
+  const target = Math.floor(frac * (events.length-1));
+  resetReplay();
+  for (let i=0;i<=target;i++) { dispatchEvent(events[i]); cursor=i+1; }
+  updateProgress();
+});
+
+function setupGutters() {
+  const root = document.getElementById("root");
+  const vg = document.getElementById("v-gutter");
+  const hg = document.getElementById("h-gutter");
+
+  const lsV = localStorage.getItem("v3replay_vgutter");
+  const lsH = localStorage.getItem("v3replay_hgutter");
+  const vw = lsV ? +lsV : Math.floor(window.innerWidth * 0.45);
+  const hw = lsH ? +lsH : Math.floor((window.innerHeight-28) * 0.55);
+  const rw = window.innerWidth - vw - 5;
+  root.style.gridTemplateColumns = `${vw}px 5px ${rw}px`;
+  root.style.gridTemplateRows = `${hw}px 5px 1fr`;
+
+  vg.addEventListener("mousedown", e => {
+    e.preventDefault();
+    vg.classList.add("dragging");
+    const onMove = ev => {
+      const nv = Math.max(200, Math.min(window.innerWidth-200, ev.clientX));
+      root.style.gridTemplateColumns = `${nv}px 5px ${window.innerWidth-nv-5}px`;
+      drawEdges();
+    };
+    const onUp = ev => {
+      vg.classList.remove("dragging");
+      const nv = Math.max(200, Math.min(window.innerWidth-200, ev.clientX));
+      localStorage.setItem("v3replay_vgutter", nv);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+
+  hg.addEventListener("mousedown", e => {
+    e.preventDefault();
+    hg.classList.add("dragging");
+    const onMove = ev => {
+      const nh = Math.max(100, Math.min(window.innerHeight-28-100, ev.clientY));
+      root.style.gridTemplateRows = `${nh}px 5px 1fr`;
+      drawEdges();
+    };
+    const onUp = ev => {
+      hg.classList.remove("dragging");
+      const nh = Math.max(100, Math.min(window.innerHeight-28-100, ev.clientY));
+      localStorage.setItem("v3replay_hgutter", nh);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+function buildDemoEvents() {
+  const now = Date.now();
+  const demo = [];
+  const add = (type, extra, delay) => demo.push({ms: now+demo.length*500, delay, type, ...extra});
+  add("log",{level:"ok",text:"Runner started. Agents: agent_critic, agent_judge, agent_parser, agent_watcher"},0);
+  add("log",{level:"ok",text:"Runner PID 12345"},300);
+  add("log",{level:"info",text:"Cycle 1"},400);
+  add("capture",{},300);
+  add("status",{agent:"WATCHER",status:"thinking"},200);
+  add("status",{agent:"CRITIC",status:"thinking"},100);
+  add("status",{agent:"PARSER",status:"thinking"},100);
+  add("swarm",{agent:"WATCHER",dir:"output",text:"Canvas is blank. Should start drawing the cat outline."},800);
+  add("status",{agent:"WATCHER",status:"idle"},100);
+  add("swarm",{agent:"CRITIC",dir:"output",text:"Agree. Begin with head circle at center."},600);
+  add("status",{agent:"CRITIC",status:"idle"},100);
+  add("swarm",{agent:"PARSER",dir:"output",text:"drag(280,200,360,200)"},500);
+  add("status",{agent:"PARSER",status:"idle"},100);
+  add("status",{agent:"JUDGE",status:"thinking"},200);
+  add("capture",{},300);
+  add("swarm",{agent:"JUDGE",dir:"execute",text:"drag(280,200,360,200)"},700);
+  add("status",{agent:"JUDGE",status:"idle"},100);
+  add("log",{level:"ok",text:"JUDGE approved: drag(280,200,360,200)"},100);
+  add("action",{raw:"ACTION:drag(280,200,360,200)",drag:[280,200,360,200]},200);
+  add("log",{level:"info",text:"Cycle 2"},500);
+  add("capture",{},300);
+  add("status",{agent:"WATCHER",status:"thinking"},200);
+  add("swarm",{agent:"WATCHER",dir:"output",text:"Head outline started. Add ears next."},700);
+  add("status",{agent:"WATCHER",status:"idle"},100);
+  add("status",{agent:"JUDGE",status:"thinking"},200);
+  add("swarm",{agent:"JUDGE",dir:"execute",text:"drag(280,200,260,170)"},600);
+  add("status",{agent:"JUDGE",status:"idle"},100);
+  add("action",{raw:"ACTION:drag(280,200,260,170)",drag:[280,200,260,170]},200);
+  add("log",{level:"info",text:"Cycle 3"},500);
+  add("action",{raw:"ACTION:drag(360,200,380,170)",drag:[360,200,380,170]},400);
+  add("log",{level:"info",text:"Cycle 4"},500);
+  add("action",{raw:"ACTION:drag(260,230,380,230)",drag:[260,230,380,230]},400);
+  add("log",{level:"info",text:"Cycle 5"},500);
+  add("action",{raw:"ACTION:drag(320,240,320,280)",drag:[320,240,320,280]},400);
+  add("swarm",{agent:"JUDGE",dir:"output",text:"DONE"},600);
+  add("done",{},200);
+  return demo;
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  initCanvas();
+  setupGutters();
+  buildGraph();
+  events = buildDemoEvents();
+  updateProgress();
+  window.addEventListener("resize", () => { drawEdges(); });
+});
+</script>
+
+</body>
+</html>

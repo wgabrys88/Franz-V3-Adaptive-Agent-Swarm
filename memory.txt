@@ -1,0 +1,7 @@
+GOAL: Draw a cat in MS Paint using drag strokes. Coordinates 0-1000.
+WATCHER: No strokes yet.
+CRITIC: Canvas is blank. Draw the cat body first.
+PARSER: drag(400,300,600,300)
+JUDGE: Waiting for agent consensus.
+CYCLE: 0
+HISTORY:
